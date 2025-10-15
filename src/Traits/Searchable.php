@@ -118,7 +118,8 @@ trait Searchable
      */
     protected function applyTextSearch($query, array $searchData, array $config)
     {
-        if (isset($searchData['text'])) {
+        // Only apply search if text field is present and has actual content
+        if (isset($searchData['text']) && $searchData['text'] !== null && trim($searchData['text']) !== '') {
             $columns = $config['columns'] ?? ['title'];
             $relations = $config['relations'] ?? [];
             $tableName = $query->getModel()->getTable();
@@ -137,6 +138,7 @@ trait Searchable
                 }
             });
         }
+        // Note: If text is empty string or null, no search filter is applied (allows clearing search)
     }
 
     /**
