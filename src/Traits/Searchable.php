@@ -8,6 +8,21 @@ use Rcp\LaravelSearch\Controllers\SearchController;
 trait Searchable
 {
     /**
+     * Check if a value should be ignored for filtering
+     * 
+     * @param mixed $value
+     * @return bool
+     */
+    protected function isEmptyFilterValue($value)
+    {
+        return $value === null || 
+               $value === '' || 
+               $value === 'all' || 
+               (is_string($value) && trim($value) === '') ||
+               (is_array($value) && empty($value));
+    }
+
+    /**
      * Handle search with multiple signature support for backward compatibility
      */
     protected function handleSearch(Request $request, $queryOrRoute = null, array $defaultFilters = [], array $defaultSorting = [])
@@ -82,7 +97,7 @@ trait Searchable
         
         // New format filters
         foreach ($filters as $field => $filterConfig) {
-            if (!isset($searchData[$field]) || empty($searchData[$field])) {
+            if (!isset($searchData[$field]) || $this->isEmptyFilterValue($searchData[$field])) {
                 continue;
             }
             
@@ -135,7 +150,7 @@ trait Searchable
         $typeDate = $searchData['type_date'] ?? $dateFilters['default_type'] ?? 'start_date';
         
         // Apply year filter
-        if (isset($searchData['year']) && !empty($searchData['year'])) {
+        if (isset($searchData['year']) && !$this->isEmptyFilterValue($searchData['year'])) {
             if (isset($dateFilters['relations'][$typeDate])) {
                 $relation = $dateFilters['relations'][$typeDate];
                 $query->whereHas($relation['name'], function($q) use ($typeDate, $searchData) {
@@ -147,7 +162,7 @@ trait Searchable
         }
         
         // Apply month filter
-        if (isset($searchData['month']) && !empty($searchData['month'])) {
+        if (isset($searchData['month']) && !$this->isEmptyFilterValue($searchData['month'])) {
             if (isset($dateFilters['relations'][$typeDate])) {
                 $relation = $dateFilters['relations'][$typeDate];
                 $query->whereHas($relation['name'], function($q) use ($typeDate, $searchData) {
@@ -164,7 +179,7 @@ trait Searchable
      */
     protected function applyLegacyTextSearch($query, array $searchData, array $config)
     {
-        if (isset($searchData['text']) && !empty($searchData['text'])) {
+        if (isset($searchData['text']) && !$this->isEmptyFilterValue($searchData['text'])) {
             $textSearch = $config['text_search'];
             $columns = $textSearch['columns'] ?? ['title'];
             $relations = $textSearch['relations'] ?? [];
@@ -192,28 +207,30 @@ trait Searchable
     {
         if (isset($config['year_field'])) {
             $yearField = $config['year_field'];
-            if (isset($value)) {
+            if (!$this->isEmptyFilterValue($value) && is_numeric($value)) {
                 $query->whereYear($yearField, $value);
             }
         }
         
         if (isset($config['month_field'])) {
             $monthField = $config['month_field'];
-            if (isset($value)) {
+            if (!$this->isEmptyFilterValue($value) && is_numeric($value)) {
                 $query->whereMonth($monthField, $value);
             }
         }
         
         if (isset($config['date_field'])) {
             $dateField = $config['date_field'];
-            if (isset($value)) {
+            if (!$this->isEmptyFilterValue($value) && is_numeric($value)) {
                 $query->whereDate($dateField, $value);
             }
         }
         
         // Default behavior for simple date field
         if (!isset($config['year_field']) && !isset($config['month_field']) && !isset($config['date_field'])) {
-            $query->whereDate($baseField, $value);
+            if (!$this->isEmptyFilterValue($value)) {
+                $query->whereDate($baseField, $value);
+            }
         }
     }
 
@@ -231,7 +248,7 @@ trait Searchable
         $sortField = $searchData['sort'] ?? null;
         $sortDirection = $searchData['direction'] ?? 'asc';
         
-        if ($sortField) {
+        if (!$this->isEmptyFilterValue($sortField)) {
             $sorts = $config['sorts'] ?? [];
             
             if (isset($sorts[$sortField])) {
@@ -265,9 +282,12 @@ trait Searchable
         $orderBy = $searchData['orderBy'] ?? 'default';
         $order = $searchData['order'] ?? 'desc';
         
-        // Apply default sorting
-        if ($orderBy === 'default' && isset($config['default']['callback'])) {
-            $config['default']['callback']($query, $order);
+        // Skip sorting if orderBy value should be ignored
+        if ($this->isEmptyFilterValue($orderBy) || $orderBy === 'default') {
+            // Apply default sorting only if explicitly configured
+            if ($orderBy === 'default' && isset($config['default']['callback'])) {
+                $config['default']['callback']($query, $order);
+            }
             return $query;
         }
         
@@ -292,7 +312,7 @@ trait Searchable
      */
     protected function applyCustomFilter($query, $field, $value, $callback = null)
     {
-        if (empty($value)) {
+        if ($this->isEmptyFilterValue($value)) {
             return $query;
         }
 
@@ -314,7 +334,7 @@ trait Searchable
     protected function applyMultipleFilters($query, array $filters, array $searchData)
     {
         foreach ($filters as $field => $config) {
-            if (!isset($searchData[$field]) || empty($searchData[$field])) {
+            if (!isset($searchData[$field]) || $this->isEmptyFilterValue($searchData[$field])) {
                 continue;
             }
 
