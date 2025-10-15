@@ -34,13 +34,17 @@ class SearchController
         // Get cached data
         $cachedData = Cache::get($cacheKey, []);
         
-        // Priority: Request parameters > Cached data > Defaults
-        $searchData = array_merge($defaults, $cachedData, array_filter($requestData, function($value) {
-            return $value !== null && $value !== '';
-        }));
+        // Start with defaults, then apply cached data
+        $searchData = array_merge($defaults, $cachedData);
         
-        // Update cache with merged data
-        Cache::put($cacheKey, $searchData, now()->addMinutes(60));
+        // If request has parameters, apply them (including null/empty to allow clearing)
+        if (!empty($requestData)) {
+            foreach ($requestData as $key => $value) {
+                $searchData[$key] = $value;
+            }
+            // Update cache only when we have new request data
+            Cache::put($cacheKey, $searchData, now()->addMinutes(60));
+        }
         
         return $searchData;
     }

@@ -44,11 +44,20 @@ trait Searchable
     {
         $searchData = $this->getSearchData($request, $defaultFilters);
         
-        // Merge sorting data properly
-        $sortingOrder = array_merge($defaultSorting, [
-            'orderBy' => $searchData['orderBy'] ?? $defaultSorting['orderBy'] ?? 'default',
-            'order' => $searchData['order'] ?? $defaultSorting['order'] ?? 'desc'
-        ]);
+        // Check if sorting data is nested in sortingOrder key
+        if (isset($searchData['sortingOrder']) && is_array($searchData['sortingOrder'])) {
+            $sortingFromSearch = $searchData['sortingOrder'];
+        } else {
+            $sortingFromSearch = [
+                'orderBy' => $searchData['orderBy'] ?? null,
+                'order' => $searchData['order'] ?? null
+            ];
+        }
+        
+        // Merge sorting data properly - prioritize search data over defaults
+        $sortingOrder = array_merge($defaultSorting, array_filter($sortingFromSearch, function($value) {
+            return $value !== null && $value !== '';
+        }));
         
         return [
             'search' => $searchData,
@@ -138,7 +147,6 @@ trait Searchable
                 }
             });
         }
-        // Note: If text is empty string or null, no search filter is applied (allows clearing search)
     }
 
     /**
