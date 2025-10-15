@@ -8,11 +8,33 @@ use Rcp\LaravelSearch\Controllers\SearchController;
 trait Searchable
 {
     /**
-     * Handle search with defaults and return filtered query
+     * Handle search with multiple signature support for backward compatibility
      */
-    protected function handleSearch(Request $request, $query, array $defaults = [])
+    protected function handleSearch(Request $request, $queryOrRoute = null, array $defaultFilters = [], array $defaultSorting = [])
     {
         $searchController = new SearchController();
+        
+        // Support for old signature: handleSearch($request, $route, $defaultFilters, $defaultSorting)
+        if (is_string($queryOrRoute)) {
+            // Store defaults if provided
+            if (!empty($defaultFilters)) {
+                $searchController->storeDefaults($request, $defaultFilters);
+            }
+            
+            // Get search data (with defaults applied)
+            $searchData = $searchController->get($request, $defaultFilters);
+            
+            return [
+                'search' => $searchData,
+                'sortingOrder' => array_merge($defaultSorting, $searchData),
+                'defaultFilters' => $defaultFilters,
+                'defaultSorting' => $defaultSorting
+            ];
+        }
+        
+        // New signature: handleSearch($request, $query, $defaults)
+        $query = $queryOrRoute;
+        $defaults = $defaultFilters;
         
         // Store defaults if provided
         if (!empty($defaults)) {
@@ -43,6 +65,16 @@ trait Searchable
     {
         $filters = $config['filters'] ?? [];
         
+        // Support for old configuration format
+        if (isset($config['date_filters'])) {
+            $this->applyLegacyDateFilters($query, $searchData, $config);
+        }
+        
+        if (isset($config['text_search'])) {
+            $this->applyLegacyTextSearch($query, $searchData, $config);
+        }
+        
+        // New format filters
         foreach ($filters as $field => $filterConfig) {
             if (!isset($searchData[$field]) || empty($searchData[$field])) {
                 continue;
@@ -89,6 +121,56 @@ trait Searchable
     }
 
     /**
+     * Apply legacy date filters (backward compatibility)
+     */
+    protected function applyLegacyDateFilters($query, array $searchData, array $config)
+    {
+        $dateFilters = $config['date_filters'];
+        $typeDate = $searchData['type_date'] ?? $dateFilters['default_type'] ?? 'start_date';
+        
+        // Apply year filter
+        if (isset($searchData['year']) && !empty($searchData['year'])) {
+            if (isset($dateFilters['relations'][$typeDate])) {
+                $relation = $dateFilters['relations'][$typeDate];
+                $query->whereHas($relation['name'], function($q) use ($typeDate, $searchData) {
+                    $q->whereYear($typeDate, $searchData['year']);
+                });
+            } else {
+                $query->whereYear($typeDate, $searchData['year']);
+            }
+        }
+        
+        // Apply month filter
+        if (isset($searchData['month']) && !empty($searchData['month'])) {
+            if (isset($dateFilters['relations'][$typeDate])) {
+                $relation = $dateFilters['relations'][$typeDate];
+                $query->whereHas($relation['name'], function($q) use ($typeDate, $searchData) {
+                    $q->whereMonth($typeDate, $searchData['month']);
+                });
+            } else {
+                $query->whereMonth($typeDate, $searchData['month']);
+            }
+        }
+    }
+
+    /**
+     * Apply legacy text search (backward compatibility)
+     */
+    protected function applyLegacyTextSearch($query, array $searchData, array $config)
+    {
+        if (isset($searchData['text']) && !empty($searchData['text'])) {
+            $textSearch = $config['text_search'];
+            $columns = $textSearch['columns'] ?? ['title'];
+            
+            $query->where(function($q) use ($columns, $searchData) {
+                foreach ($columns as $column) {
+                    $q->orWhere($column, 'LIKE', '%' . $searchData['text'] . '%');
+                }
+            });
+        }
+    }
+
+    /**
      * Apply date filters (year, month, specific date)
      */
     protected function applyDateFilters($query, $baseField, $value, $config)
@@ -125,6 +207,12 @@ trait Searchable
      */
     protected function applySorting($query, array $searchData, array $config = [])
     {
+        // Support for old configuration format
+        if (isset($config['columns']) || isset($config['default'])) {
+            return $this->applyLegacySorting($query, $searchData, $config);
+        }
+        
+        // New format sorting
         $sortField = $searchData['sort'] ?? null;
         $sortDirection = $searchData['direction'] ?? 'asc';
         
@@ -149,6 +237,30 @@ trait Searchable
                 // Default sort by field name
                 $query->orderBy($sortField, $sortDirection);
             }
+        }
+        
+        return $query;
+    }
+
+    /**
+     * Apply legacy sorting (backward compatibility)
+     */
+    protected function applyLegacySorting($query, array $searchData, array $config)
+    {
+        $orderBy = $searchData['orderBy'] ?? 'default';
+        $order = $searchData['order'] ?? 'desc';
+        
+        // Apply default sorting
+        if ($orderBy === 'default' && isset($config['default']['callback'])) {
+            $config['default']['callback']($query, $order);
+            return $query;
+        }
+        
+        // Apply column sorting
+        if (isset($config['columns'][$orderBy]['callback'])) {
+            $config['columns'][$orderBy]['callback']($query, $order);
+        } else {
+            $query->orderBy($orderBy, $order);
         }
         
         return $query;
