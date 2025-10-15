@@ -22,18 +22,25 @@ class SearchController
     }
 
     /**
-     * Get search parameters
+     * Get search parameters with proper request merging
      */
     public function get(Request $request, array $defaults = [])
     {
         $cacheKey = $this->getCacheKey($request);
-        $searchData = Cache::get($cacheKey, $defaults);
         
-        // Apply defaults if cache is empty or missing required keys
-        if (empty($searchData) || !$this->hasRequiredDefaults($searchData, $defaults)) {
-            $searchData = array_merge($searchData ?: [], $defaults);
-            Cache::put($cacheKey, $searchData, now()->addMinutes(60));
-        }
+        // Get request parameters
+        $requestData = $request->all();
+        
+        // Get cached data
+        $cachedData = Cache::get($cacheKey, []);
+        
+        // Priority: Request parameters > Cached data > Defaults
+        $searchData = array_merge($defaults, $cachedData, array_filter($requestData, function($value) {
+            return $value !== null && $value !== '';
+        }));
+        
+        // Update cache with merged data
+        Cache::put($cacheKey, $searchData, now()->addMinutes(60));
         
         return $searchData;
     }
@@ -92,19 +99,5 @@ class SearchController
         $userId = Auth::id() ?? 'guest';
         
         return "search_{$userId}_{$route}";
-    }
-
-    /**
-     * Check if required defaults are present
-     */
-    private function hasRequiredDefaults(array $searchData, array $defaults): bool
-    {
-        foreach ($defaults as $key => $value) {
-            if (!isset($searchData[$key]) || empty($searchData[$key])) {
-                return false;
-            }
-        }
-        
-        return true;
     }
 }

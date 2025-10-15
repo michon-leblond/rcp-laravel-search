@@ -16,7 +16,112 @@ php artisan vendor:publish --tag=rcp-search-config
 
 ## Utilisation
 
-### 1. Utilisation Simple avec SearchHelper
+### 1. Utilisation avec le Trait Searchable (Recommandée)
+
+Le trait `Searchable` offre une approche complète pour gérer la recherche, le filtrage et le tri dans vos contrôleurs :
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Controller;
+use Rcp\LaravelSearch\Traits\Searchable;
+use App\Models\PreOrder;
+use Carbon\Carbon;
+
+class PreOrderController extends Controller
+{
+    use Searchable;
+
+    public function index(Request $request)
+    {
+        // Définir les filtres par défaut
+        $defaultFilters = [
+            "year" => Carbon::now()->year,
+            "month" => Carbon::now()->month,
+            "text" => null,
+            "type_date" => 'start_date',
+        ];
+
+        // Définir l'ordre de tri par défaut
+        $defaultSortingOrder = [
+            'order' => 'desc',
+            'orderBy' => 'default',
+        ];
+
+        // Gérer la recherche avec mise en cache automatique
+        $searchData = $this->handleSearch($request, 'pre-orders', $defaultFilters, $defaultSortingOrder);
+        
+        // Obtenir la configuration de recherche
+        $searchConfig = $this->getSearchConfiguration();
+        
+        // Construire la requête
+        $preOrders = PreOrder::with('event', 'status', 'products');
+        
+        // Appliquer les filtres de recherche
+        $preOrders = $this->applySearchFilters($preOrders, $searchData['search'], $searchConfig);
+        
+        // Appliquer le tri
+        $preOrders = $this->applySorting($preOrders, $searchData['sortingOrder'], $searchConfig['sorting'] ?? []);
+        
+        return view('pre-orders.index', [
+            'preOrders' => $preOrders->get(),
+            'searchCache' => $searchData['search'],
+            'sortingOrder' => $searchData['sortingOrder'],
+        ]);
+    }
+
+    /**
+     * Configuration de la recherche pour ce contrôleur
+     */
+    protected function getSearchConfiguration(): array
+    {
+        return [
+            'date_filters' => [
+                'default_type' => 'start_date',
+                'allowed_types' => ['start_date', 'end_date', 'created_at'],
+                'relations' => [
+                    'start_date' => ['name' => 'event', 'table' => 'events'],
+                    'end_date' => ['name' => 'event', 'table' => 'events'],
+                ]
+            ],
+            'text_search' => [
+                'columns' => ['title', 'number'],
+                'relations' => [
+                    'customer_name' => ['name' => 'customer', 'field' => 'name']
+                ]
+            ],
+            'sorting' => [
+                'default' => [
+                    'callback' => function ($query, $order) {
+                        return $query->join('events', 'events.id', '=', 'pre_orders.event_id')
+                            ->orderBy('events.start_date', 'desc')
+                            ->select('pre_orders.*');
+                    }
+                ],
+                'columns' => [
+                    'start_date' => [
+                        'callback' => function ($query, $order) {
+                            return $query->join('events', 'events.id', '=', 'pre_orders.event_id')
+                                ->orderBy('events.start_date', $order)
+                                ->select('pre_orders.*');
+                        }
+                    ],
+                    'number' => [
+                        'callback' => function ($query, $order) {
+                            return $query->orderBy('number', $order);
+                        }
+                    ]
+                ]
+            ]
+        ];
+    }
+}
+```
+
+### 2. Utilisation Simple avec SearchHelper
 
 Pour des cas simples de recherche :
 
@@ -61,38 +166,112 @@ class ProductController extends Controller
 }
 ```
 
-### 2. Utilisation Avancée avec le Trait Searchable
+### 3. Configuration Avancée du Trait Searchable
 
-Pour des cas plus complexes avec relations et tri personnalisé :
+#### Filtres de Date avec Relations
+
+Le trait supporte les filtres de date complexes avec des relations :
 
 ```php
-<?php
-
-namespace App\Http\Controllers;
-
-use Illuminate\Http\Request;
-use Rcp\LaravelSearch\Traits\Searchable;
-use App\Models\PreOrder;
-
-class PreOrderController extends Controller
+protected function getSearchConfiguration(): array
 {
-    use Searchable;
+    return [
+        'date_filters' => [
+            'default_type' => 'start_date',  // Type de date par défaut
+            'allowed_types' => ['start_date', 'end_date', 'created_at'],
+            'relations' => [
+                'start_date' => ['name' => 'event', 'table' => 'events'],
+                'end_date' => ['name' => 'event', 'table' => 'events'],
+                // created_at utilise la table principale (pas de relation)
+            ]
+        ],
+    ];
+}
+```
 
-    public function index(Request $request)
-    {
-        $query = PreOrder::with('event');
-        
-        // Définir les valeurs par défaut
-        $defaults = [
-            'year' => date('Y'),
-            'month' => date('n')
-        ];
-        
-        // Appliquer la recherche avec la configuration
-        $preOrders = $this->handleSearch($request, $query, $defaults)
-            ->paginate(15);
-        
-        return inertia('PreOrders/Index', [
+#### Recherche Textuelle avec Relations
+
+```php
+protected function getSearchConfiguration(): array
+{
+    return [
+        'text_search' => [
+            'columns' => ['title', 'number', 'description'],
+            'relations' => [
+                'customer_name' => ['name' => 'customer', 'field' => 'name'],
+                'event_title' => ['name' => 'event', 'field' => 'title']
+            ]
+        ],
+    ];
+}
+```
+
+#### Tri Personnalisé avec Callbacks
+
+```php
+protected function getSearchConfiguration(): array
+{
+    return [
+        'sorting' => [
+            'default' => [
+                'callback' => function ($query, $order) {
+                    return $query->join('events', 'events.id', '=', 'pre_orders.event_id')
+                        ->orderBy('events.start_date', 'desc')
+                        ->select('pre_orders.*');
+                }
+            ],
+            'columns' => [
+                'start_date' => [
+                    'callback' => function ($query, $order) {
+                        return $query->join('events', 'events.id', '=', 'pre_orders.event_id')
+                            ->orderBy('events.start_date', $order)
+                            ->select('pre_orders.*');
+                    }
+                ],
+                'customer_name' => [
+                    'callback' => function ($query, $order) {
+                        return $query->join('customers', 'customers.id', '=', 'pre_orders.customer_id')
+                            ->orderBy('customers.name', $order)
+                            ->select('pre_orders.*');
+                    }
+                ],
+                'number' => [
+                    'callback' => function ($query, $order) {
+                        return $query->orderBy('number', $order);
+                    }
+                ]
+            ]
+        ]
+    ];
+}
+```
+
+#### Utilisation des Méthodes Utilitaires
+
+Le trait fournit des méthodes utilitaires pour des cas d'usage spécifiques :
+
+```php
+public function index(Request $request)
+{
+    $query = PreOrder::with('event', 'status');
+    
+    // Appliquer des filtres personnalisés
+    $customFilters = [
+        'status_id' => function ($query, $value) {
+            return $query->where('status_id', $value);
+        },
+        'price_range' => function ($query, $value) {
+            [$min, $max] = explode('-', $value);
+            return $query->whereBetween('total_ht', [$min, $max]);
+        }
+    ];
+    
+    $searchData = $this->handleSearch($request, 'pre-orders', $defaultFilters, $defaultSorting);
+    
+    // Appliquer les filtres personnalisés
+    $query = $this->applyMultipleFilters($query, $customFilters, $searchData['search']);
+    
+    $preOrders = $query->get();
             'preOrders' => $preOrders
         ]);
     }
@@ -141,6 +320,85 @@ class PreOrderController extends Controller
         ];
     }
 }
+```
+
+### 4. Fonctionnalités Avancées
+
+#### Cache Automatique des Paramètres de Recherche
+
+Le trait gère automatiquement la mise en cache des paramètres de recherche par utilisateur et par route :
+
+```php
+// Les paramètres sont automatiquement sauvegardés et restaurés
+$searchData = $this->handleSearch($request, 'products.index', $defaultFilters, $defaultSorting);
+
+// Effacer le cache pour une route spécifique
+Cache::forget($this->getSearchCacheKey('products.index'));
+```
+
+#### Filtres Personnalisés avec Callbacks
+
+```php
+protected function getSearchConfiguration(): array
+{
+    return [
+        'custom_filters' => [
+            'price_range' => function ($query, $value) {
+                [$min, $max] = explode('-', $value);
+                return $query->whereBetween('price', [$min, $max]);
+            },
+            'has_reviews' => function ($query, $value) {
+                return $value ? $query->has('reviews') : $query->doesntHave('reviews');
+            }
+        ]
+    ];
+}
+```
+
+#### Recherche avec Relations Multiples
+
+```php
+protected function getSearchConfiguration(): array
+{
+    return [
+        'text_search' => [
+            'columns' => ['title', 'description'],
+            'relations' => [
+                'author_name' => ['name' => 'author', 'field' => 'name'],
+                'category_name' => ['name' => 'category', 'field' => 'title'],
+                'tag_names' => ['name' => 'tags', 'field' => 'name'] // relation many-to-many
+            ]
+        ]
+    ];
+}
+```
+
+### 5. API de Recherche
+
+Le package inclut un contrôleur API pour gérer les recherches via AJAX :
+
+```javascript
+// Sauvegarder des paramètres de recherche
+fetch('/api/search/store', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': token
+    },
+    body: JSON.stringify({
+        year: 2024,
+        month: 10,
+        text: 'recherche'
+    })
+});
+
+// Récupérer des paramètres de recherche
+fetch('/api/search/get')
+    .then(response => response.json())
+    .then(data => console.log(data));
+
+// Effacer le cache de recherche
+fetch('/api/search/clear', { method: 'DELETE' });
 ```
 
 ## Configuration

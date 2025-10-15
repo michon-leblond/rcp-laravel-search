@@ -24,9 +24,15 @@ trait Searchable
             // Get search data (with defaults applied)
             $searchData = $searchController->get($request, $defaultFilters);
             
+            // Merge sorting data properly
+            $sortingOrder = array_merge($defaultSorting, [
+                'orderBy' => $searchData['orderBy'] ?? $defaultSorting['orderBy'] ?? 'default',
+                'order' => $searchData['order'] ?? $defaultSorting['order'] ?? 'desc'
+            ]);
+            
             return [
                 'search' => $searchData,
-                'sortingOrder' => array_merge($defaultSorting, $searchData),
+                'sortingOrder' => $sortingOrder,
                 'defaultFilters' => $defaultFilters,
                 'defaultSorting' => $defaultSorting
             ];
@@ -161,10 +167,19 @@ trait Searchable
         if (isset($searchData['text']) && !empty($searchData['text'])) {
             $textSearch = $config['text_search'];
             $columns = $textSearch['columns'] ?? ['title'];
+            $relations = $textSearch['relations'] ?? [];
             
-            $query->where(function($q) use ($columns, $searchData) {
+            $query->where(function($q) use ($columns, $relations, $searchData) {
                 foreach ($columns as $column) {
-                    $q->orWhere($column, 'LIKE', '%' . $searchData['text'] . '%');
+                    // Check if column has relation specification
+                    if (isset($relations[$column])) {
+                        $relation = $relations[$column];
+                        $q->orWhereHas($relation['name'], function($subQ) use ($relation, $searchData) {
+                            $subQ->where($relation['field'], 'LIKE', '%' . $searchData['text'] . '%');
+                        });
+                    } else {
+                        $q->orWhere($column, 'LIKE', '%' . $searchData['text'] . '%');
+                    }
                 }
             });
         }
@@ -264,5 +279,68 @@ trait Searchable
         }
         
         return $query;
+    }
+
+    /**
+     * Apply custom filter to query
+     * 
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param string $field
+     * @param mixed $value
+     * @param callable|null $callback
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    protected function applyCustomFilter($query, $field, $value, $callback = null)
+    {
+        if (empty($value)) {
+            return $query;
+        }
+
+        if ($callback && is_callable($callback)) {
+            return $callback($query, $value, $field);
+        }
+
+        return $query->where($field, $value);
+    }
+
+    /**
+     * Apply multiple filters at once
+     * 
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param array $filters
+     * @param array $searchData
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    protected function applyMultipleFilters($query, array $filters, array $searchData)
+    {
+        foreach ($filters as $field => $config) {
+            if (!isset($searchData[$field]) || empty($searchData[$field])) {
+                continue;
+            }
+
+            $value = $searchData[$field];
+            
+            if (is_array($config) && isset($config['callback'])) {
+                $this->applyCustomFilter($query, $field, $value, $config['callback']);
+            } elseif (is_callable($config)) {
+                $this->applyCustomFilter($query, $field, $value, $config);
+            } else {
+                $query->where($field, $value);
+            }
+        }
+
+        return $query;
+    }
+
+    /**
+     * Get search cache key for storing search parameters
+     * 
+     * @param string $route
+     * @param array $params
+     * @return string
+     */
+    protected function getSearchCacheKey($route, array $params = [])
+    {
+        return 'search_' . $route . '_' . md5(serialize($params));
     }
 }
