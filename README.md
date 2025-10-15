@@ -472,42 +472,6 @@ return [
 
 Le package utilise le système de cache de Laravel pour persister les paramètres de recherche. Chaque utilisateur et route a sa propre clé de cache.
 
-## Frontend Integration
-
-Exemple d'utilisation avec Inertia.js Vue :
-
-```vue
-<template>
-  <div>
-    <SearchForm 
-      :search-data="searchData"
-      @search="handleSearch"
-    />
-    
-    <DataTable 
-      :items="preOrders.data"
-      :pagination="preOrders"
-    />
-  </div>
-</template>
-
-<script setup>
-import { router } from '@inertiajs/vue3'
-
-const props = defineProps({
-  preOrders: Object,
-  searchData: Object
-})
-
-const handleSearch = (searchParams) => {
-  router.get(route('preorders.index'), searchParams, {
-    preserveState: true,
-    preserveScroll: true
-  })
-}
-</script>
-```
-
 ## Licence
 
 MIT
