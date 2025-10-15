@@ -118,7 +118,7 @@ trait Searchable
      */
     protected function applyTextSearch($query, array $searchData, array $config)
     {
-        if (isset($searchData['text']) && !$this->isEmptyFilterValue($searchData['text'])) {
+        if (isset($searchData['text'])) {
             $columns = $config['columns'] ?? ['title'];
             $relations = $config['relations'] ?? [];
             $tableName = $query->getModel()->getTable();
