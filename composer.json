@@ -1,0 +1,48 @@
+{
+    "name": "rcp-laravel-search/rcp-laravel-search",
+    "description": "Un système de recherche dynamique et réutilisable pour Laravel avec Inertia.js",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "search",
+        "inertia",
+        "dynamic",
+        "filter",
+        "rcp"
+    ],
+    "authors": [
+        {
+            "name": "RCP Team",
+            "email": "dev@rcp.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "laravel/framework": "^10.0|^11.0|^12.0",
+        "inertiajs/inertia-laravel": "^0.6|^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "orchestra/testbench": "^8.0|^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rcp\\LaravelSearch\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rcp\\LaravelSearch\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Rcp\\LaravelSearch\\RcpSearchServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
