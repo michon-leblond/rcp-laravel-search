@@ -472,6 +472,72 @@ return [
 
 Le package utilise le système de cache de Laravel pour persister les paramètres de recherche. Chaque utilisateur et route a sa propre clé de cache.
 
+
+# Package rcp-laravel-search
+
+Guide pour basculer entre repository local (dev) et GitHub (prod).
+
+## 🛠️ Mode DEV (Local)
+
+**composer.json :**
+```json
+"rcp-laravel-search/rcp-laravel-search": "dev-main",
+"repositories": [
+    {
+        "type": "path",
+        "url": "../rcp-laravel-search",
+        "options": { "symlink": true }
+    }
+]
+```
+
+**Commandes :**
+```bash
+composer update rcp-laravel-search/rcp-laravel-search
+```
+
+## 🚀 Mode PROD (GitHub)
+
+**composer.json :**
+```json
+"rcp-laravel-search/rcp-laravel-search": "^1.2",
+"repositories": [
+    {
+        "type": "vcs",
+        "url": "https://github.com/michon-leblond/rcp-laravel-search.git"
+    }
+]
+```
+
+**Commandes :**
+```bash
+composer clear-cache
+rm -rf vendor/rcp-laravel-search
+composer update rcp-laravel-search/rcp-laravel-search
+```
+
+## 🔄 Basculer
+
+### DEV → PROD
+1. Push + créer tag : `git tag v1.3.0 && git push origin v1.3.0`
+2. Modifier composer.json (voir config PROD)
+3. `composer clear-cache && composer update rcp-laravel-search/rcp-laravel-search`
+
+### PROD → DEV
+1. S'assurer que `../rcp-laravel-search` existe
+2. Modifier composer.json (voir config DEV)  
+3. `composer clear-cache && composer update rcp-laravel-search/rcp-laravel-search`
+
+## 📝 Créer une version
+
+```bash
+cd ../rcp-laravel-search
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+**Actuellement : Mode PROD avec `^1.2`** ✅
+
 ## Licence
 
 MIT
