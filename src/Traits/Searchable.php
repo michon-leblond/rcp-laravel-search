@@ -15,11 +15,11 @@ trait Searchable
      */
     protected function isEmptyFilterValue($value)
     {
-        return $value === null || 
-               $value === '' || 
-               $value === 'all' || 
-               (is_string($value) && trim($value) === '') ||
-               (is_array($value) && empty($value));
+        return $value === null ||
+            $value === '' ||
+            $value === 'all' ||
+            (is_string($value) && trim($value) === '') ||
+            (is_array($value) && empty($value));
     }
 
     /**
@@ -28,12 +28,12 @@ trait Searchable
     protected function getSearchData(Request $request, array $defaultFilters = []): array
     {
         $searchController = new SearchController();
-        
+
         // Store defaults if provided
         if (!empty($defaultFilters)) {
             $searchController->storeDefaults($request, $defaultFilters);
         }
-        
+
         return $searchController->get($request, $defaultFilters);
     }
 
@@ -43,7 +43,7 @@ trait Searchable
     protected function handleSearch(Request $request, array $defaultFilters = [], array $defaultSorting = []): array
     {
         $searchData = $this->getSearchData($request, $defaultFilters);
-        
+
         // Check if sorting data is nested in sortingOrder key
         if (isset($searchData['sortingOrder']) && is_array($searchData['sortingOrder'])) {
             $sortingFromSearch = $searchData['sortingOrder'];
@@ -53,12 +53,12 @@ trait Searchable
                 'order' => $searchData['order'] ?? null
             ];
         }
-        
+
         // Merge sorting data properly - prioritize search data over defaults
-        $sortingOrder = array_merge($defaultSorting, array_filter($sortingFromSearch, function($value) {
+        $sortingOrder = array_merge($defaultSorting, array_filter($sortingFromSearch, function ($value) {
             return $value !== null && $value !== '';
         }));
-        
+
         return [
             'search' => $searchData,
             'sortingOrder' => $sortingOrder,
@@ -76,17 +76,17 @@ trait Searchable
         if (isset($config['date_filters'])) {
             $this->applyDateFilters($query, $searchData, $config['date_filters']);
         }
-        
+
         // Apply text search if configured
         if (isset($config['text_search'])) {
             $this->applyTextSearch($query, $searchData, $config['text_search']);
         }
-        
+
         // Apply other filters if configured
         if (isset($config['filters'])) {
             $this->applyCustomFilters($query, $searchData, $config['filters']);
         }
-        
+
         return $query;
     }
 
@@ -95,25 +95,25 @@ trait Searchable
      */
     protected function applyDateFilters($query, array $searchData, array $config)
     {
-        $typeDate = $searchData['type_date'] ?? $config['default_type'] ?? 'start_date';
-        
+        $typeDate = $searchData['type_date'] ?? $config['default_type'] ?? 'created_at';
+
         // Apply year filter
         if (isset($searchData['year']) && !$this->isEmptyFilterValue($searchData['year'])) {
             if (isset($config['relations'][$typeDate])) {
                 $relation = $config['relations'][$typeDate];
-                $query->whereHas($relation['name'], function($q) use ($typeDate, $searchData) {
+                $query->whereHas($relation['name'], function ($q) use ($typeDate, $searchData) {
                     $q->whereYear($typeDate, $searchData['year']);
                 });
             } else {
                 $query->whereYear($query->getModel()->getTable() . '.' . $typeDate, $searchData['year']);
             }
         }
-        
+
         // Apply month filter
         if (isset($searchData['month']) && !$this->isEmptyFilterValue($searchData['month'])) {
             if (isset($config['relations'][$typeDate])) {
                 $relation = $config['relations'][$typeDate];
-                $query->whereHas($relation['name'], function($q) use ($typeDate, $searchData) {
+                $query->whereHas($relation['name'], function ($q) use ($typeDate, $searchData) {
                     $q->whereMonth($typeDate, $searchData['month']);
                 });
             } else {
@@ -132,17 +132,17 @@ trait Searchable
             $columns = $config['columns'] ?? ['title'];
             $relations = $config['relations'] ?? [];
             $tableName = $query->getModel()->getTable();
-            
-            $query->where(function($q) use ($columns, $relations, $searchData, $tableName) {
+
+            $query->where(function ($q) use ($columns, $relations, $searchData, $tableName) {
                 foreach ($columns as $column) {
                     // Check if column has relation specification
                     if (isset($relations[$column])) {
                         $relation = $relations[$column];
-                        $q->orWhereHas($relation['name'], function($subQ) use ($relation, $searchData) {
-                            $subQ->where($relation['field'], 'LIKE', '%' . $searchData['text'] . '%');
+                        $q->orWhereHas($relation['name'], function ($subQ) use ($relation, $searchData) {
+                            $subQ->whereRaw('UPPER(' . $relation['field'] . ') LIKE ?', ['%' . strtoupper($searchData['text']) . '%']);
                         });
                     } else {
-                        $q->orWhere($tableName . '.' . $column, 'LIKE', '%' . $searchData['text'] . '%');
+                        $q->orWhereRaw('UPPER(' . $tableName . '.' . $column . ') LIKE ?', ['%' . strtoupper($searchData['text']) . '%']);
                     }
                 }
             });
@@ -158,34 +158,33 @@ trait Searchable
             if (!isset($searchData[$field]) || $this->isEmptyFilterValue($searchData[$field])) {
                 continue;
             }
-            
+
             $value = $searchData[$field];
             $type = is_array($filterConfig) ? ($filterConfig['type'] ?? 'text') : $filterConfig;
-            
             switch ($type) {
                 case 'relation':
                     $relation = $filterConfig['relation'] ?? $field;
                     $relationField = $filterConfig['field'] ?? 'id';
-                    $query->whereHas($relation, function($q) use ($relationField, $value) {
-                        $q->where($relationField, $value);
+                    $query->whereHas($relation, function ($q) use ($relationField, $value) {
+                        $q->whereRaw('UPPER(' . $relationField . ') LIKE ?', ['%' . strtoupper($value) . '%']);
                     });
                     break;
-                    
+
                 case 'text':
-                    $query->where($query->getModel()->getTable() . '.' . $field, 'LIKE', "%{$value}%");
+                    $query->whereRaw('UPPER(' . $query->getModel()->getTable() . '.' . $field . ') LIKE ?', ['%' . strtoupper($value) . '%']);
                     break;
-                    
+
                 case 'exact':
                     $query->where($query->getModel()->getTable() . '.' . $field, $value);
                     break;
-                    
+
                 case 'custom':
                     $callback = $filterConfig['callback'] ?? null;
                     if ($callback && is_callable($callback)) {
                         $callback($query, $value, $searchData);
                     }
                     break;
-                    
+
                 default:
                     $query->where($query->getModel()->getTable() . '.' . $field, $value);
                     break;
@@ -200,24 +199,23 @@ trait Searchable
     {
         $orderBy = $sortingOrder['orderBy'] ?? 'default';
         $order = $sortingOrder['order'] ?? 'desc';
-        
+
         // Skip sorting if orderBy value should be ignored
         if ($this->isEmptyFilterValue($orderBy)) {
             return $query;
         }
-        
+
         // Apply default sorting
         if ($orderBy === 'default' && isset($sortingConfig['default']['callback'])) {
             return $sortingConfig['default']['callback']($query, $order);
         }
-        
+
         // Apply column sorting
         if (isset($sortingConfig['columns'][$orderBy]['callback'])) {
             return $sortingConfig['columns'][$orderBy]['callback']($query, $order);
         }
-        
+
         // Fallback to simple column sorting
         return $query->orderBy($query->getModel()->getTable() . '.' . $orderBy, $order);
     }
-
 }
