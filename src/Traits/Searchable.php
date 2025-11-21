@@ -25,24 +25,24 @@ trait Searchable
     /**
      * Get search data from request
      */
-    protected function getSearchData(Request $request, array $defaultFilters = []): array
+    protected function getSearchData(Request $request, array $defaultFilters = [], string $searchId = null): array
     {
         $searchController = new SearchController();
 
         // Store defaults if provided
         if (!empty($defaultFilters)) {
-            $searchController->storeDefaults($request, $defaultFilters);
+            $searchController->storeDefaults($request, $defaultFilters, $searchId);
         }
 
-        return $searchController->get($request, $defaultFilters);
+        return $searchController->get($request, $defaultFilters, $searchId);
     }
 
     /**
      * Get search and sorting data with defaults
      */
-    protected function handleSearch(Request $request, array $defaultFilters = [], array $defaultSorting = []): array
+    protected function handleSearch(Request $request, array $defaultFilters = [], array $defaultSorting = [], string $searchId = null): array
     {
-        $searchData = $this->getSearchData($request, $defaultFilters);
+        $searchData = $this->getSearchData($request, $defaultFilters, $searchId);
 
         // Check if sorting data is nested in sortingOrder key
         if (isset($searchData['sortingOrder']) && is_array($searchData['sortingOrder'])) {

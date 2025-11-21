@@ -11,10 +11,10 @@ class SearchController
     /**
      * Store search parameters
      */
-    public function store(Request $request)
+    public function store(Request $request, ?string $searchId)
     {
         $searchData = $request->all();
-        $cacheKey = $this->getCacheKey($request);
+        $cacheKey = $this->getCacheKey($request, $searchId);
         
         Cache::put($cacheKey, $searchData, now()->addMinutes(60));
         
@@ -24,9 +24,9 @@ class SearchController
     /**
      * Get search parameters with proper request merging
      */
-    public function get(Request $request, array $defaults = [])
+    public function get(Request $request, array $defaults = [], ?string $searchId = null): array
     {
-        $cacheKey = $this->getCacheKey($request);
+        $cacheKey = $this->getCacheKey($request, $searchId);
         
         // Get request parameters
         $requestData = $request->all();
@@ -52,9 +52,9 @@ class SearchController
     /**
      * Clear search parameters
      */
-    public function clear(Request $request)
+    public function clear(Request $request, ?string $searchId)
     {
-        $cacheKey = $this->getCacheKey($request);
+        $cacheKey = $this->getCacheKey($request, $searchId);
         Cache::forget($cacheKey);
         
         return response()->json(['success' => true]);
@@ -63,9 +63,9 @@ class SearchController
     /**
      * Update specific search parameter
      */
-    public function update(Request $request)
+    public function update(Request $request, ?string $searchId)
     {
-        $cacheKey = $this->getCacheKey($request);
+        $cacheKey = $this->getCacheKey($request, $searchId);
         $existingData = Cache::get($cacheKey, []);
         $newData = array_merge($existingData, $request->all());
         
@@ -77,9 +77,9 @@ class SearchController
     /**
      * Store default values for a route
      */
-    public function storeDefaults(Request $request, array $defaults)
+    public function storeDefaults(Request $request, array $defaults, ?string $searchId = null): array
     {
-        $cacheKey = $this->getCacheKey($request);
+        $cacheKey = $this->getCacheKey($request, $searchId);
         $existingData = Cache::get($cacheKey, []);
         
         // Only set defaults for keys that don't exist
@@ -97,11 +97,11 @@ class SearchController
     /**
      * Generate cache key based on route and user
      */
-    private function getCacheKey(Request $request): string
+    private function getCacheKey(Request $request, ?string $searchId = null): string
     {
-        $route = $request->route()->getName() ?? $request->path();
+        $identifier = $searchId ?? ($request->route()->getName() ?? $request->path());
         $userId = Auth::id() ?? 'guest';
         
-        return "search_{$userId}_{$route}";
+        return "search_{$userId}_{$identifier}";
     }
 }
